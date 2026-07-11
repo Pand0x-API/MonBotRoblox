@@ -7,39 +7,42 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from flask import Flask
+import aiohttp
 
 
-# ======================
-# Petit serveur pour Render
-# ======================
+# ==========================
+# SERVEUR POUR RENDER
+# ==========================
 
 app = Flask(__name__)
 
+
 @app.route("/")
-def accueil():
-    return "Bot Discord en ligne"
+def home():
+    return "Ticket Bot Online"
 
 
-def lancer_web():
+def lancer_serveur():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
 
-Thread(target=lancer_web, daemon=True).start()
+Thread(target=lancer_serveur, daemon=True).start()
 
 
-# ======================
-# Discord
-# ======================
+# ==========================
+# DISCORD
+# ==========================
 
 TOKEN = os.getenv("TOKEN")
 
-if not TOKEN:
-    raise Exception("TOKEN manquant dans les variables Render")
+if TOKEN is None:
+    raise Exception("TOKEN manquant dans Render")
 
 
 intents = discord.Intents.default()
 intents.guilds = True
+intents.members = True
 
 
 bot = commands.Bot(
@@ -51,35 +54,57 @@ bot = commands.Bot(
 tickets = {}
 
 
-def creer_id():
-    chars = string.ascii_uppercase + string.digits
+def creer_id_ticket():
+
+    caracteres = string.ascii_uppercase + string.digits
 
     return "-".join(
-        "".join(random.choice(chars) for _ in range(4))
+        "".join(random.choice(caracteres) for _ in range(4))
         for _ in range(3)
     )
 
+
+# ==========================
+# READY
+# ==========================
 
 @bot.event
 async def on_ready():
 
     await bot.tree.sync()
 
-    print("--------------------")
+    print("---------------------")
     print(f"Connecté : {bot.user}")
     print("Commandes synchronisées")
-    print("--------------------")
+    print("---------------------")
 
 
-# ======================
+
+# ==========================
+# PING
+# ==========================
+
+@bot.tree.command(
+    name="ping",
+    description="Tester le bot"
+)
+async def ping(interaction):
+
+    await interaction.response.send_message(
+        f"🏓 Pong ! {round(bot.latency * 1000)}ms"
+    )
+
+
+
+# ==========================
 # TICKET
-# ======================
+# ==========================
 
 @bot.tree.command(
     name="ticket",
-    description="Créer un ticket support"
+    description="Créer un ticket privé"
 )
-async def ticket(interaction: discord.Interaction):
+async def ticket(interaction):
 
     user = interaction.user
     guild = interaction.guild
@@ -94,7 +119,7 @@ async def ticket(interaction: discord.Interaction):
         return
 
 
-    identifiant = creer_id()
+    nom = "ticket-" + creer_id_ticket()
 
 
     permissions = {
@@ -119,7 +144,7 @@ async def ticket(interaction: discord.Interaction):
 
 
     salon = await guild.create_text_channel(
-        f"ticket-{identifiant}",
+        nom,
         overwrites=permissions
     )
 
@@ -132,13 +157,10 @@ async def ticket(interaction: discord.Interaction):
         description=f"""
 Bonjour {user.mention}
 
-Un membre du staff va répondre.
+Le support va répondre.
 
-ID :
-`{identifiant}`
-
-Fermer :
-`/close`
+Pour fermer :
+/close
 """,
         color=discord.Color.blue()
     )
@@ -154,16 +176,20 @@ Fermer :
 
 
 
+# ==========================
+# CLOSE
+# ==========================
+
 @bot.tree.command(
     name="close",
     description="Fermer le ticket"
 )
-async def close(interaction: discord.Interaction):
+async def close(interaction):
 
     if interaction.channel.id not in tickets.values():
 
         await interaction.response.send_message(
-            "❌ Pas un ticket.",
+            "❌ Ce n'est pas un ticket.",
             ephemeral=True
         )
         return
@@ -184,20 +210,68 @@ async def close(interaction: discord.Interaction):
 
 
 
-# ======================
-# TEST
-# ======================
+# ==========================
+# ROBLOX VERIFY
+# ==========================
 
 @bot.tree.command(
-    name="ping",
-    description="Tester le bot"
+    name="verify",
+    description="Lier ton compte Roblox"
 )
-async def ping(interaction: discord.Interaction):
+@app_commands.describe(
+    pseudo="Ton pseudo Roblox"
+)
+async def verify(
+    interaction: discord.Interaction,
+    pseudo: str
+):
 
-    await interaction.response.send_message(
-        "🏓 Pong !"
+    await interaction.response.defer(ephemeral=True)
+
+
+    url = (
+        "https://users.roblox.com/v1/users/search"
+        f"?keyword={pseudo}&limit=1"
     )
 
 
+    async with aiohttp.ClientSession() as session:
+
+        async with session.get(url) as response:
+
+            data = await response.json()
+
+
+
+    if not data.get("data"):
+
+        await interaction.followup.send(
+            "❌ Joueur Roblox introuvable."
+        )
+        return
+
+
+
+    joueur = data["data"][0]
+
+
+    role = discord.utils.get(
+        interaction.guild.roles,
+        name="Verified Player"
+    )
+
+
+    if role:
+
+        await interaction.user.add_roles(role)
+
+
+    await interaction.followup.send(
+        f"✅ Compte Roblox lié : **{joueur['name']}**"
+    )
+
+
+
+# ==========================
 
 bot.run(TOKEN)
