@@ -10,10 +10,11 @@ from flask import Flask
 
 from logger import logger
 from roblox import get_user
+from ai_moderation import analyze_message
 
 
-# Render health server
 app = Flask(__name__)
+
 
 @app.route("/")
 def home():
@@ -23,6 +24,7 @@ def home():
 def lancer_serveur():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
 
 Thread(target=lancer_serveur, daemon=True).start()
 
@@ -34,10 +36,44 @@ if not TOKEN:
 intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 tickets = {}
+
+
+async def moderate_message(message):
+    if message.author.bot:
+        return
+
+    result = await analyze_message(message.content)
+    risk = result.get("risk", 0)
+    action = result.get("action", "none")
+
+    if risk >= 400:
+        logger.warning(
+            f"Human review required | {message.author} | {result}"
+        )
+        return
+
+    if action == "warning":
+        await message.reply("⚠️ Attention : comportement suspect détecté.")
+
+    elif action == "mute":
+        try:
+            await message.author.timeout(
+                discord.utils.utcnow() + discord.timedelta(minutes=10),
+                reason="AI anti-spam detection"
+            )
+        except Exception as e:
+            logger.exception(e)
+
+
+@bot.event
+async def on_message(message):
+    await moderate_message(message)
+    await bot.process_commands(message)
 
 
 def creer_id_ticket():
@@ -94,7 +130,6 @@ async def ticket(interaction):
     )
 
     tickets[user.id] = channel.id
-
     await channel.send(f"🎫 Ticket ouvert pour {user.mention}\nUtilise /close pour fermer.")
     await interaction.response.send_message("✅ Ticket créé", ephemeral=True)
 
