@@ -13,8 +13,9 @@ from logger import logger
 from roblox import get_user
 from ai_moderation import analyze_message
 
-BOT_VERSION = "1.1.0"
+BOT_VERSION = "1.2.0"
 BOT_LOG_CHANNEL = 1525582433775390830
+GUILD_ID = 1525500692423508018
 
 app = Flask(__name__)
 
@@ -57,12 +58,7 @@ async def moderate_message(message):
     action = result.get("action", "none")
 
     if risk >= 400:
-        await send_log(
-            f"🚨 Vérification humaine requise\n"
-            f"Utilisateur: {message.author.mention}\n"
-            f"Score: {risk}\n"
-            f"Raison: {result.get('reason')}"
-        )
+        await send_log(f"🚨 Vérification humaine requise\nUtilisateur: {message.author.mention}\nScore: {risk}\nRaison: {result.get('reason')}")
         return
 
     if action == "warning":
@@ -70,16 +66,8 @@ async def moderate_message(message):
 
     elif action == "mute":
         try:
-            await message.author.timeout(
-                timedelta(minutes=10),
-                reason="AI anti-spam detection"
-            )
-            await send_log(
-                f"🔇 Mute automatique\n"
-                f"Utilisateur: {message.author.mention}\n"
-                f"Score: {risk}\n"
-                f"Raison: {result.get('reason')}"
-            )
+            await message.author.timeout(timedelta(minutes=10), reason="AI anti-spam detection")
+            await send_log(f"🔇 Mute automatique\nUtilisateur: {message.author.mention}\nScore: {risk}")
         except Exception as e:
             logger.exception(e)
 
@@ -90,25 +78,23 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-def creer_id_ticket():
-    chars = string.ascii_uppercase + string.digits
-    return "-".join("".join(random.choice(chars) for _ in range(4)) for _ in range(3))
-
-
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    logger.info(f"Connecté : {bot.user}")
-    await send_log(
-        f"🟢 Bot connecté\nVersion: {BOT_VERSION}\nDiscord.py: {discord.__version__}"
+    await bot.change_presence(
+        status=discord.Status.online,
+        activity=discord.Game("MonBotRoblox 🛡️")
     )
+
+    guild = discord.Object(id=GUILD_ID)
+    await bot.tree.sync(guild=guild)
+
+    logger.info(f"Connecté : {bot.user}")
+    await send_log(f"🟢 Bot connecté\nVersion: {BOT_VERSION}\nDiscord.py: {discord.__version__}")
 
 
 @bot.tree.command(name="version", description="Voir la version du bot")
 async def version(interaction):
-    await interaction.response.send_message(
-        f"🤖 MonBotRoblox\n📦 Version: {BOT_VERSION}\n🐍 discord.py: {discord.__version__}"
-    )
+    await interaction.response.send_message(f"🤖 MonBotRoblox\n📦 Version: {BOT_VERSION}\n🐍 discord.py: {discord.__version__}")
 
 
 @bot.tree.command(name="ping", description="Tester le bot")
