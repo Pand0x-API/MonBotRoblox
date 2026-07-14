@@ -5,27 +5,56 @@ from threading import Thread
 import discord
 from discord.ext import commands
 from discord import app_commands
-from flask import Flask
+from flask import Flask, request, jsonify
 
 from logger import logger
 from roblox import get_user
-from verification import create_code
+from verification import create_code, check_code, consume_code
 from ai_moderation import analyze_message
 from database import add_risk, add_warning, add_mute
 
-BOT_VERSION = "1.4.0"
+BOT_VERSION = "1.4.1"
 BOT_LOG_CHANNEL = 1525582433775390830
 GUILD_ID = 1525500692423508018
 
 app = Flask(__name__)
+
 
 @app.route("/")
 def home():
     return "MonBotRoblox Online"
 
 
+@app.route("/roblox/verify", methods=["POST"])
+def roblox_verify():
+    data = request.json or {}
+    code = data.get("code")
+    user_id = data.get("userId")
+    username = data.get("username")
+
+    if not code or not user_id or not username:
+        return jsonify({"success": False, "status": "invalid_request"})
+
+    if not check_code(code, username):
+        return jsonify({
+            "success": False,
+            "status": "invalid_code",
+            "message": "Code invalide ou expiré"
+        })
+
+    info = consume_code(code)
+
+    return jsonify({
+        "success": True,
+        "status": "success",
+        "message": "Compte lié avec succès",
+        "discord_id": info["discord_id"]
+    })
+
+
 def lancer_serveur():
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
 
 Thread(target=lancer_serveur, daemon=True).start()
 
@@ -47,26 +76,8 @@ async def send_log(text):
         await channel.send(text)
 
 
-async def moderate_message(message):
-    if message.author.bot or not message.content:
-        return
-    try:
-        result = await analyze_message(message.content)
-        total = add_risk(message.author.id, int(result.get("risk", 0)), result.get("reason", "Analyse"))
-        if total >= 400:
-            await send_log(f"🚨 Vérification humaine {message.author.mention} Score: {total}")
-        elif total >= 300:
-            await message.author.timeout(timedelta(minutes=10), reason="Anti-spam")
-            add_mute(message.author.id)
-        elif total >= 100:
-            add_warning(message.author.id)
-    except Exception as e:
-        logger.exception(e)
-
-
 @bot.event
 async def on_message(message):
-    await moderate_message(message)
     await bot.process_commands(message)
 
 
@@ -84,11 +95,6 @@ async def version(interaction):
     await interaction.response.send_message(f"🤖 MonBotRoblox {BOT_VERSION}\n🐍 discord.py {discord.__version__}")
 
 
-@bot.tree.command(name="ping", description="Ping du bot")
-async def ping(interaction):
-    await interaction.response.send_message(f"🏓 {round(bot.latency * 1000)}ms")
-
-
 @bot.tree.command(name="verify", description="Vérifier un compte Roblox connecté au jeu")
 @app_commands.describe(pseudo="Pseudo Roblox")
 async def verify(interaction: discord.Interaction, pseudo: str):
@@ -102,10 +108,7 @@ async def verify(interaction: discord.Interaction, pseudo: str):
     code = create_code(interaction.user.id, joueur["name"])
 
     await interaction.followup.send(
-        f"🎮 Vérification Roblox\n\n"
-        f"Compte : **{joueur['name']}**\n"
-        f"Code : **{code}**\n\n"
-        f"Entre ce code dans le jeu Roblox pour terminer la vérification."
+        f"🎮 Vérification Roblox\n\nCompte : **{joueur['name']}**\nCode : **{code}**\n\nEntre ce code dans le jeu Roblox."
     )
 
 
