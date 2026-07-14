@@ -4,6 +4,8 @@ import time
 
 _codes = {}
 
+CODE_TIMEOUT = 300
+
 
 def create_code(discord_id: int, roblox_username: str):
     code = f"RBX-{random.randint(100000, 999999)}"
@@ -21,7 +23,7 @@ def consume_code(code: str):
     if not data:
         return None
 
-    if time.time() - data["created"] > 300:
+    if time.time() - data["created"] > CODE_TIMEOUT:
         del _codes[code]
         return None
 
@@ -35,7 +37,7 @@ def check_code(code: str, username: str):
     if not data:
         return False
 
-    if time.time() - data["created"] > 300:
+    if time.time() - data["created"] > CODE_TIMEOUT:
         del _codes[code]
         return False
 
