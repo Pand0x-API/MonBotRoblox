@@ -12,11 +12,12 @@ from roblox import get_user
 from ai_moderation import analyze_message
 from database import add_risk, add_warning, add_mute
 
-BOT_VERSION = "1.3.0"
+BOT_VERSION = "1.3.1"
 BOT_LOG_CHANNEL = 1525582433775390830
 GUILD_ID = 1525500692423508018
 
 app = Flask(__name__)
+
 
 @app.route("/")
 def home():
@@ -25,6 +26,7 @@ def home():
 
 def lancer_serveur():
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
 
 Thread(target=lancer_serveur, daemon=True).start()
 
@@ -54,25 +56,14 @@ async def moderate_message(message):
         result = await analyze_message(message.content)
         risk = int(result.get("risk", 0))
         reason = result.get("reason", "Analyse IA")
-
         total = add_risk(message.author.id, risk, reason)
 
         if total >= 400:
-            await send_log(
-                f"🚨 Vérification humaine requise\n"
-                f"Utilisateur: {message.author.mention}\n"
-                f"Score: {total}\n"
-                f"Raison: {reason}"
-            )
-
+            await send_log(f"🚨 Vérification humaine\n{message.author.mention}\nScore: {total}\nRaison: {reason}")
         elif total >= 300:
-            await message.author.timeout(
-                timedelta(minutes=10),
-                reason="Score anti-spam élevé"
-            )
+            await message.author.timeout(timedelta(minutes=10), reason="Score anti-spam élevé")
             add_mute(message.author.id)
             await send_log(f"🔇 Mute automatique {message.author.mention} Score: {total}")
-
         elif total >= 100:
             add_warning(message.author.id)
             await message.reply(f"⚠️ Avertissement automatique ({total}/500)")
@@ -94,14 +85,32 @@ async def on_ready():
         activity=discord.Game("MonBotRoblox 🛡️")
     )
 
-    synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-    logger.info(f"Connecté : {bot.user} | {len(synced)} commandes")
-    await send_log(f"🟢 Bot connecté\nVersion: {BOT_VERSION}\nCommandes: {len(synced)}")
+    try:
+        # Synchronisation serveur (rapide)
+        guild = discord.Object(id=GUILD_ID)
+        guild_commands = await bot.tree.sync(guild=guild)
+
+        # Synchronisation globale (pour que les commandes apparaissent partout)
+        global_commands = await bot.tree.sync()
+
+        logger.info(f"Connecté : {bot.user}")
+        logger.info(f"Commandes serveur: {len(guild_commands)} | globales: {len(global_commands)}")
+
+        await send_log(
+            f"🟢 Bot connecté\n"
+            f"Version: {BOT_VERSION}\n"
+            f"Commandes serveur: {len(guild_commands)}\n"
+            f"Commandes globales: {len(global_commands)}"
+        )
+    except Exception as e:
+        logger.exception(e)
 
 
 @bot.tree.command(name="version", description="Version du bot")
 async def version(interaction):
-    await interaction.response.send_message(f"🤖 Version {BOT_VERSION}\n🐍 discord.py {discord.__version__}")
+    await interaction.response.send_message(
+        f"🤖 MonBotRoblox {BOT_VERSION}\n🐍 discord.py {discord.__version__}"
+    )
 
 
 @bot.tree.command(name="ping", description="Ping du bot")
