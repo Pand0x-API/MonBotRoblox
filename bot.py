@@ -10,9 +10,19 @@ from logger import logger
 from roblox import get_user, get_user_by_id
 from verification import create_code, check_code, consume_code
 
-BOT_VERSION = "1.5.0"
+BOT_VERSION = "1.6.0"
 BOT_LOG_CHANNEL = 1525582433775390830
 GUILD_ID = 1525500692423508018
+
+# Rôle donné après vérification Roblox
+VERIFIED_ROLE_ID = 1525621386884944065
+
+# Récompenses boost serveur
+BOOST_ROLES = {
+    1: 1526586093934350469,
+    5: 1526588739743125514,
+    10: 1526588881779163246
+}
 
 app = Flask(__name__)
 
@@ -86,7 +96,7 @@ async def version(interaction):
     embed.add_field(name="Version", value=BOT_VERSION)
     embed.add_field(name="discord.py", value=discord.__version__)
     embed.add_field(name="Statut", value="🟢 En ligne")
-    embed.add_field(name="Serveur", value="Roblox Verification + Moderation")
+    embed.add_field(name="Fonctions", value="Roblox + Modération + Boost")
     await interaction.response.send_message(embed=embed)
 
 
@@ -112,8 +122,31 @@ async def verify(interaction: discord.Interaction, compte: str):
     code = create_code(interaction.user.id, joueur["name"])
 
     await interaction.followup.send(
-        f"🎮 Vérification Roblox\n\nCompte: **{joueur['name']}**\nID: **{joueur['id']}**\nCode: **{code}**\n\nEntre ce code dans le jeu."
+        f"🎮 Vérification Roblox\n\nCompte: **{joueur['name']}**\nID: **{joueur['id']}**\nCode: **{code}**"
     )
+
+
+@bot.event
+async def on_member_update(before, after):
+    if before.premium_since == after.premium_since:
+        return
+
+    if after.premium_since:
+        boosts = after.guild.premium_subscription_count or 0
+
+        role_id = None
+        if boosts >= 10:
+            role_id = BOOST_ROLES[10]
+        elif boosts >= 5:
+            role_id = BOOST_ROLES[5]
+        elif boosts >= 1:
+            role_id = BOOST_ROLES[1]
+
+        if role_id:
+            role = after.guild.get_role(role_id)
+            if role:
+                await after.add_roles(role)
+                await send_log(f"🚀 Boost détecté\nUtilisateur: {after.mention}\nNiveau: {boosts} boost(s)")
 
 
 bot.run(TOKEN)
