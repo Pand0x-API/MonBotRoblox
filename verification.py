@@ -15,6 +15,20 @@ def create_code(discord_id: int, roblox_username: str):
     return code
 
 
+def consume_code(code: str):
+    data = _codes.get(code)
+
+    if not data:
+        return None
+
+    if time.time() - data["created"] > 300:
+        del _codes[code]
+        return None
+
+    del _codes[code]
+    return data
+
+
 def check_code(code: str, username: str):
     data = _codes.get(code)
 
