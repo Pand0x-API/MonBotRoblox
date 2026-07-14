@@ -1,9 +1,13 @@
 from flask import Flask, request, jsonify
 import json
 import os
+import time
 
 app = Flask(__name__)
 DATABASE = "database.json"
+
+# Codes temporaires générés par le bot Discord
+verification_codes = {}
 
 
 def charger():
@@ -25,14 +29,12 @@ def accueil():
 
 @app.route("/roblox/check_player", methods=["POST"])
 def check_player():
-    """Reçoit une demande du serveur Roblox pour savoir si un joueur est connecté."""
     data = request.json or {}
     username = data.get("username")
 
     if not username:
         return jsonify({"found": False, "message": "Pseudo manquant"})
 
-    # Le serveur Roblox devra envoyer la liste des joueurs connectés
     players = data.get("players", [])
 
     for player in players:
@@ -45,6 +47,56 @@ def check_player():
     return jsonify({
         "found": False,
         "message": "Utilisateur non connecté"
+    })
+
+
+@app.route("/roblox/verify", methods=["POST"])
+def verify_roblox():
+    data = request.json or {}
+
+    code = data.get("code")
+    user_id = data.get("userId")
+    username = data.get("username")
+
+    if not code or not user_id or not username:
+        return jsonify({
+            "success": False,
+            "status": "invalid_request",
+            "message": "Informations manquantes"
+        })
+
+    saved = verification_codes.get(code)
+
+    if not saved:
+        return jsonify({
+            "success": False,
+            "status": "invalid_code",
+            "message": "Code invalide"
+        })
+
+    if time.time() - saved["created"] > 300:
+        del verification_codes[code]
+        return jsonify({
+            "success": False,
+            "status": "expired_code",
+            "message": "Code expiré"
+        })
+
+    comptes = charger()
+
+    comptes[str(user_id)] = {
+        "roblox_id": user_id,
+        "username": username,
+        "discord_id": saved["discord_id"]
+    }
+
+    sauvegarder(comptes)
+    del verification_codes[code]
+
+    return jsonify({
+        "success": True,
+        "status": "success",
+        "message": "Compte lié avec succès"
     })
 
 
