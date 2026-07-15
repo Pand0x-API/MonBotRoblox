@@ -10,6 +10,31 @@ DATABASE = "database.json"
 verification_codes = {}
 
 
+# Priorité des rôles Discord vers Roblox
+ROLE_PRIORITY = {
+    "Owner": {
+        "name": "👑 Owner",
+        "color": {"r": 255, "g": 80, "b": 80}
+    },
+    "Booster III": {
+        "name": "💎 Booster III",
+        "color": {"r": 180, "g": 0, "b": 255}
+    },
+    "Booster II": {
+        "name": "💎 Booster II",
+        "color": {"r": 80, "g": 120, "b": 255}
+    },
+    "Booster I": {
+        "name": "💎 Booster I",
+        "color": {"r": 255, "g": 180, "b": 0}
+    },
+    "Roblox Vérifié": {
+        "name": "✅ Roblox Vérifié",
+        "color": {"r": 0, "g": 255, "b": 0}
+    }
+}
+
+
 def charger():
     if not os.path.exists(DATABASE):
         return {}
@@ -27,6 +52,40 @@ def accueil():
     return "✅ API Discord Roblox en ligne"
 
 
+@app.route("/api/player/<user_id>")
+def player_role(user_id):
+    comptes = charger()
+
+    compte = None
+    for value in comptes.values():
+        if str(value.get("roblox_id")) == str(user_id):
+            compte = value
+            break
+
+    if not compte:
+        return jsonify({
+            "verified": False,
+            "role": "",
+            "color": {"r": 255, "g": 255, "b": 255}
+        })
+
+    roles = compte.get("roles", [])
+
+    for role in ["Owner", "Booster III", "Booster II", "Booster I", "Roblox Vérifié"]:
+        if role in roles:
+            return jsonify({
+                "verified": True,
+                "role": ROLE_PRIORITY[role]["name"],
+                "color": ROLE_PRIORITY[role]["color"]
+            })
+
+    return jsonify({
+        "verified": True,
+        "role": "",
+        "color": {"r": 255, "g": 255, "b": 255}
+    })
+
+
 @app.route("/roblox/check_player", methods=["POST"])
 def check_player():
     data = request.json or {}
@@ -36,18 +95,11 @@ def check_player():
         return jsonify({"found": False, "message": "Pseudo manquant"})
 
     players = data.get("players", [])
-
     for player in players:
         if player.lower() == username.lower():
-            return jsonify({
-                "found": True,
-                "message": "Joueur connecté"
-            })
+            return jsonify({"found": True, "message": "Joueur connecté"})
 
-    return jsonify({
-        "found": False,
-        "message": "Utilisateur non connecté"
-    })
+    return jsonify({"found": False, "message": "Utilisateur non connecté"})
 
 
 @app.route("/roblox/verify", methods=["POST"])
@@ -59,45 +111,30 @@ def verify_roblox():
     username = data.get("username")
 
     if not code or not user_id or not username:
-        return jsonify({
-            "success": False,
-            "status": "invalid_request",
-            "message": "Informations manquantes"
-        })
+        return jsonify({"success": False, "status": "invalid_request"})
 
     saved = verification_codes.get(code)
 
     if not saved:
-        return jsonify({
-            "success": False,
-            "status": "invalid_code",
-            "message": "Code invalide"
-        })
+        return jsonify({"success": False, "status": "invalid_code"})
 
     if time.time() - saved["created"] > 300:
         del verification_codes[code]
-        return jsonify({
-            "success": False,
-            "status": "expired_code",
-            "message": "Code expiré"
-        })
+        return jsonify({"success": False, "status": "expired_code"})
 
     comptes = charger()
 
     comptes[str(user_id)] = {
         "roblox_id": user_id,
         "username": username,
-        "discord_id": saved["discord_id"]
+        "discord_id": saved["discord_id"],
+        "roles": ["Roblox Vérifié"]
     }
 
     sauvegarder(comptes)
     del verification_codes[code]
 
-    return jsonify({
-        "success": True,
-        "status": "success",
-        "message": "Compte lié avec succès"
-    })
+    return jsonify({"success": True, "status": "success"})
 
 
 @app.route("/roblox/status/<user_id>")
